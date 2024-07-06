@@ -25,7 +25,7 @@ jobs:
       run: |
         # Create a release
         TAG_NAME=$(date +'%Y%m%d%H%M%S')
-        gh release create $TAG_NAME target/release/your_binary_name
+        gh release create $TAG_NAME target/release/taskmaster
 
     env:
       CARGO_TERM_COLOR: always
