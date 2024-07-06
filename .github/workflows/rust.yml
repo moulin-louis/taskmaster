@@ -20,3 +20,13 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+    - name: Publish binary
+      if: github.ref == 'refs/heads/main'
+      run: |
+        # Create a release
+        TAG_NAME=$(date +'%Y%m%d%H%M%S')
+        gh release create $TAG_NAME target/release/your_binary_name
+
+    env:
+      CARGO_TERM_COLOR: always
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
