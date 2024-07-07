@@ -16,6 +16,7 @@ pub enum CommandUser {
     Unknown,
 }
 
+#[derive(Debug)]
 pub enum CommandStatus {
     Running,
     Sleeping,
@@ -26,13 +27,19 @@ pub enum CommandStatus {
     Unknown,
 }
 
+impl Default for CommandStatus {
+    fn default() -> Self {
+        Self::Unknown
+    }
+}
+
 impl From<&str> for CommandStatus {
     fn from(value: &str) -> Self {
-        if (value.contains("sleeping")) {
+        if value.contains("sleeping") {
             CommandStatus::Sleeping
-        } else if (value.contains("running")) {
+        } else if value.contains("running") {
             CommandStatus::Running
-        } else if (value.contains("waiting")) {
+        } else if value.contains("waiting") {
             CommandStatus::Waiting
         } else if value.contains("stopped") {
             CommandStatus::Stopped
@@ -58,8 +65,8 @@ impl From<(&str, Option<u32>)> for CommandUser {
     }
 }
 impl CommandUser {
-    fn child_status(id: u32) -> Result<CommandStatus, Box<dyn Error>> {
-        let data = format!("/proc/{id}/status");
+    pub fn program_status(program: &TMProgram) -> Result<CommandStatus, Box<dyn Error>> {
+        let data = format!("/proc/{}/status", program.child.id());
         let mut file = match File::open(data) {
             Ok(x) => x,
             Err(e) => {
@@ -75,19 +82,23 @@ impl CommandUser {
             .lines()
             .nth(2)
             .expect("nothing on line 3 for status file");
-
         Ok(CommandStatus::from(status_line))
     }
 
-    fn list_childs(programs: &Vec<TMProgram>) {
-        for program in programs {
-            let child = &program.child;
-            let config = &program.config;
-            let status = Self::child_status(child.id());
+    fn list_childs(programs: &mut Vec<TMProgram>) {
+        println!("{} process running under out control", programs.len());
+        for program in programs.iter_mut() {
+            // let status = Self::program_status(program);
+            print!("{} : {} => ", program.config.command, program.child.id(),);
+            match program.child.try_wait() {
+                Ok(Some(status)) => println!("exited with status: {status}"),
+                Ok(None) => println!("{:?}", Self::program_status(&program).unwrap_or_default()),
+                Err(_) => eprintln!("failed to get status"),
+            };
         }
     }
 
-    pub fn exec(&self, programs: &Vec<TMProgram>) {
+    pub fn exec(&self, programs: &mut Vec<TMProgram>) {
         match self {
             Self::Exit => RUNNING.store(false, Ordering::SeqCst),
             Self::List => Self::list_childs(programs),

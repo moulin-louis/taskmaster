@@ -25,6 +25,19 @@ pub struct TMProgram {
 //     RUNNING.store(false, Ordering::SeqCst);
 // }
 
+fn gb_programs(programs: &mut Vec<TMProgram>) -> Result<(), Box<dyn Error>> {
+    let mut killed_process: Vec<u32> = Vec::new();
+    for program in &mut *programs {
+        let status = CommandUser::program_status(&program)?;
+        match status {
+            command::CommandStatus::Unknown => killed_process.push(program.child.id()),
+            _ => {}
+        }
+    }
+    programs.retain(|program| !killed_process.contains(&program.child.id()));
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let filename = "config.toml";
 
@@ -78,17 +91,19 @@ fn main() -> Result<(), Box<dyn Error>> {
             None => None,
         };
         let cmd: CommandUser = (cmd, val).into();
-        println!("cmd = {cmd:?}");
-        cmd.exec(&programs);
+        cmd.exec(&mut programs);
+        println!("running gb programs");
+        gb_programs(&mut programs).expect("failed to remove killed process");
+        println!("done");
     }
 
-    println!("kill all childs to avoir zombie process");
+    println!("kill all childs to avoid zombie process");
     for mut program in programs {
         let pid = program.child.id();
         program
             .child
             .kill()
-            .expect(format!("Unable to kill child {program:?}").as_str());
+            .unwrap_or_else(|_| panic!("Unable to kill child {program:?}"));
         println!("process {pid} killed");
     }
     Ok(())
