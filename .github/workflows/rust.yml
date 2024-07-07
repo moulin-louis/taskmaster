@@ -27,3 +27,6 @@ jobs:
 
     - name: List file
       run: ls -lRa .
+
+    - name: Release
+      uses: softprops/action-gh-release@v2
