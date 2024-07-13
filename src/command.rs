@@ -2,11 +2,11 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::Read;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
-use crate::Ordering;
 use crate::program::ProgramStatus;
+use crate::Ordering;
 use crate::TMProgram;
 
 #[derive(Debug)]
@@ -86,26 +86,20 @@ impl CommandUser {
         Ok(ProgramStatus::from(status_line))
     }
 
-    fn find_child(programs: &mut [TMProgram], val: u32) -> Option<&mut TMProgram> {
-        programs
-            .iter_mut()
-            .find(|it| it.is_launched() && it.child.as_ref().unwrap().id() == val)
-    }
-
     fn display_status(program: &mut TMProgram) {
-        match Self::program_status(program) {
-            Err(e) => eprintln!("failed to fetch status: {}", e),
-            Ok(status) => match program.child.as_mut() {
-                None => eprintln!("program ({}) isn't launched", program.config.command),
-                Some(child) => {
-                    print!("{} : {} => ", program.config.command, child.id());
-                    match child.try_wait() {
-                        Ok(Some(status)) => println!("exited: {}", status.code().unwrap()list),
-                        Ok(None) => println!("{:?}", status),
-                        Err(_) => eprintln!("failed to get status"),
+        match program.child.as_mut() {
+            None => eprintln!("program ({}) isn't launched", program.config.command),
+            Some(child) => {
+                print!("{} : {} => ", program.config.command, child.id());
+                match child.try_wait() {
+                    Ok(Some(status)) => {
+                        println!("exited: {}", status.code().unwrap());
+                        program.child = None;
                     }
+                    Ok(None) => println!("{:?}", Self::program_status(program)),
+                    Err(_) => eprintln!("failed to get status"),
                 }
-            },
+            }
         };
     }
     fn list_childs(programs: &mut [TMProgram]) {
@@ -115,15 +109,15 @@ impl CommandUser {
         }
     }
 
-    fn status_child(programs: &mut [TMProgram], val: u32) {
-        match CommandUser::find_child(programs, val) {
+    fn status_child(programs: &mut [TMProgram], idx: u32) {
+        match programs.get_mut(idx as usize) {
             None => eprintln!("this id isnt under out control"),
             Some(x) => Self::display_status(x),
         }
     }
 
-    fn kill_child(programs: &mut [TMProgram], val: u32) {
-        match CommandUser::find_child(programs, val) {
+    fn kill_child(programs: &mut [TMProgram], idx: u32) {
+        match programs.get_mut(idx as usize) {
             None => eprintln!("this id isn't under our control"),
             Some(x) => {
                 match &mut x.child {
@@ -141,13 +135,34 @@ impl CommandUser {
         }
     }
 
+    fn launch_child(programs: &mut [TMProgram], idx: u32) {
+        match programs.get_mut(idx as usize) {
+            None => eprintln!("this id isn't under our control"),
+            Some(program) => match program.child {
+                Some(_) => eprintln!("program already launched"),
+                None => {
+                    program.launch();
+                    if program.child.is_none() {
+                        eprintln!("failed to launch program")
+                    }
+                }
+            },
+        };
+    }
+
+    fn restart_child(programs: &mut [TMProgram], idx: u32) {
+        Self::kill_child(programs, idx);
+        Self::launch_child(programs, idx);
+    }
+
     pub fn exec(&self, programs: &mut [TMProgram], running: Arc<AtomicBool>) {
         match self {
             Self::Exit => running.store(false, Ordering::SeqCst),
             Self::List => Self::list_childs(programs),
             Self::Status(x) => Self::status_child(programs, *x),
             Self::Kill(x) => Self::kill_child(programs, *x),
-            // Self::Launch(x) => Self::launch_child(programs, *x),
+            Self::Launch(x) => Self::launch_child(programs, *x),
+            Self::Restart(x) => Self::restart_child(programs, *x),
             _ => println!("unhandled command"),
         }
     }
