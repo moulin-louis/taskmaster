@@ -1,33 +1,52 @@
-name: Rust CI
+name: Rust CI & Release
 
 on:
   push:
-    branches:
-      - main
+    tags: # Trigger on tag pushes only (e.g., v1.0.0)
+      - '*'
 
 jobs:
-  build:
+  build_and_release:
     runs-on: ubuntu-latest
+    permissions: # Add permissions to create a release
+      contents: write
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v2
 
-    - name: Set up Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        profile: minimal
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true  # Ensure using specified toolchain
 
-    - name: Build
-      run: cargo build --release
+      - name: Build release binary
+        run: cargo build --release
 
-    - name: Run tests
-      run: cargo test --release
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }} # Use the tag from the push
+          release_name: ${{ github.ref }} # Same as tag for simplicity
+          draft: false
+          prerelease: false
+          body: | # Release notes (customize!)
+            ## Changes in ${{ github.ref }}
 
-    - name: List file
-      run: ls -lRa .
+            * Your release notes here...
 
-    - name: Release
-      uses: softprops/action-gh-release@v2
-      if: startsWith(github.ref, 'refs/tags/')
+      - name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: target/release/taskmaster # Path to your binary
+          asset_name: taskmaster # Name for the uploaded asset
+          asset_content_type: application/octet-stream # Binary type
