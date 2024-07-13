@@ -2,11 +2,11 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::Read;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
-use crate::program::ProgramStatus;
 use crate::Ordering;
+use crate::program::ProgramStatus;
 use crate::TMProgram;
 
 #[derive(Debug)]
@@ -111,7 +111,7 @@ impl CommandUser {
 
     fn status_child(programs: &mut [TMProgram], idx: u32) {
         match programs.get_mut(idx as usize) {
-            None => eprintln!("this id isnt under out control"),
+            None => eprintln!("this id isn't under out control"),
             Some(x) => Self::display_status(x),
         }
     }
