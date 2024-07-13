@@ -32,7 +32,7 @@ impl TMProgram {
         let args = &program[1..program.len()];
         match Command::new(cmd).args(args).stdout(Stdio::piped()).spawn() {
             Ok(x) => self.child = Some(x),
-            Err(e) => eprintln!("failed to spwan program: {}", e),
+            Err(e) => eprintln!("failed to spawn program: {}", e),
         }
     }
 }
