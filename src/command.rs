@@ -1,9 +1,13 @@
-use crate::Ordering;
-use crate::TMProgram;
-use crate::RUNNING;
 use std::error::Error;
+use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::Read;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+
+use crate::Ordering;
+use crate::program::ProgramStatus;
+use crate::TMProgram;
 
 #[derive(Debug)]
 pub enum CommandUser {
@@ -17,36 +21,33 @@ pub enum CommandUser {
 }
 
 #[derive(Debug)]
-pub enum CommandStatus {
-    Running,
-    Sleeping,
-    Waiting,
-    Zombie,
-    Stopped,
-    Paging,
-    Unknown,
+pub enum CommandError {
+    ProgramNotLaunched,
+    FailedOpenFile,
 }
 
-impl Default for CommandStatus {
-    fn default() -> Self {
-        Self::Unknown
+impl Display for CommandError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
-impl From<&str> for CommandStatus {
+impl Error for CommandError {}
+
+impl From<&str> for ProgramStatus {
     fn from(value: &str) -> Self {
         if value.contains("sleeping") {
-            CommandStatus::Sleeping
+            ProgramStatus::Sleeping
         } else if value.contains("running") {
-            CommandStatus::Running
+            ProgramStatus::Running
         } else if value.contains("waiting") {
-            CommandStatus::Waiting
+            ProgramStatus::Waiting
         } else if value.contains("stopped") {
-            CommandStatus::Stopped
+            ProgramStatus::Stopped
         } else if value.contains("paging") {
-            CommandStatus::Paging
+            ProgramStatus::Paging
         } else {
-            CommandStatus::Unknown
+            ProgramStatus::Unknown
         }
     }
 }
@@ -65,43 +66,88 @@ impl From<(&str, Option<u32>)> for CommandUser {
     }
 }
 impl CommandUser {
-    pub fn program_status(program: &TMProgram) -> Result<CommandStatus, Box<dyn Error>> {
-        let data = format!("/proc/{}/status", program.child.id());
+    pub fn program_status(program: &TMProgram) -> Result<ProgramStatus, CommandError> {
+        let data = match &program.child {
+            None => return Err(CommandError::ProgramNotLaunched),
+            Some(x) => format!("/proc/{}/status", x.id()),
+        };
         let mut file = match File::open(data) {
             Ok(x) => x,
             Err(e) => {
-                eprintln!("failed to open process status file, most likely perm error or process isnt running");
-                return Err(Box::new(e));
+                eprintln!("got error: {e} opening proc file");
+                return Err(CommandError::FailedOpenFile);
             }
         };
 
         let mut content = String::new();
         file.read_to_string(&mut content)
             .expect("cant read status file to end");
-        let status_line = content
-            .lines()
-            .nth(2)
-            .expect("nothing on line 3 for status file");
-        Ok(CommandStatus::from(status_line))
+        let status_line = content.lines().nth(2).unwrap();
+        Ok(ProgramStatus::from(status_line))
     }
 
-    fn list_childs(programs: &mut Vec<TMProgram>) {
-        println!("{} process running under out control", programs.len());
+    fn find_child(programs: &mut [TMProgram], val: u32) -> Option<&mut TMProgram> {
+        programs
+            .iter_mut()
+            .find(|it| it.is_launched() && it.child.as_ref().unwrap().id() == val)
+    }
+
+    fn display_status(program: &mut TMProgram) {
+        match Self::program_status(program) {
+            Err(e) => eprintln!("failed to fetch status: {}", e),
+            Ok(status) => match program.child.as_mut() {
+                None => eprintln!("program ({}) isn't launched", program.config.command),
+                Some(child) => {
+                    print!("{} : {} => ", program.config.command, child.id());
+                    match child.try_wait() {
+                        Ok(Some(status)) => println!("exited: {}", status.code().unwrap()list),
+                        Ok(None) => println!("{:?}", status),
+                        Err(_) => eprintln!("failed to get status"),
+                    }
+                }
+            },
+        };
+    }
+    fn list_childs(programs: &mut [TMProgram]) {
+        println!("{} program running under out control", programs.len());
         for program in programs.iter_mut() {
-            // let status = Self::program_status(program);
-            print!("{} : {} => ", program.config.command, program.child.id(),);
-            match program.child.try_wait() {
-                Ok(Some(status)) => println!("exited with status: {status}"),
-                Ok(None) => println!("{:?}", Self::program_status(&program).unwrap_or_default()),
-                Err(_) => eprintln!("failed to get status"),
-            };
+            CommandUser::display_status(program);
         }
     }
 
-    pub fn exec(&self, programs: &mut Vec<TMProgram>) {
+    fn status_child(programs: &mut [TMProgram], val: u32) {
+        match CommandUser::find_child(programs, val) {
+            None => eprintln!("this id isnt under out control"),
+            Some(x) => Self::display_status(x),
+        }
+    }
+
+    fn kill_child(programs: &mut [TMProgram], val: u32) {
+        match CommandUser::find_child(programs, val) {
+            None => eprintln!("this id isn't under our control"),
+            Some(x) => {
+                match &mut x.child {
+                    None => {
+                        eprintln!("this id isn't launched");
+                        return;
+                    }
+                    Some(y) => {
+                        y.kill().unwrap();
+                        println!("program killed!");
+                    }
+                }
+                x.child = None;
+            }
+        }
+    }
+
+    pub fn exec(&self, programs: &mut [TMProgram], running: Arc<AtomicBool>) {
         match self {
-            Self::Exit => RUNNING.store(false, Ordering::SeqCst),
+            Self::Exit => running.store(false, Ordering::SeqCst),
             Self::List => Self::list_childs(programs),
+            Self::Status(x) => Self::status_child(programs, *x),
+            Self::Kill(x) => Self::kill_child(programs, *x),
+            // Self::Launch(x) => Self::launch_child(programs, *x),
             _ => println!("unhandled command"),
         }
     }
