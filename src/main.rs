@@ -7,6 +7,8 @@ use std::{
     },
 };
 
+use command::CommandError;
+
 use crate::program::TMProgram;
 use crate::{command::CommandUser, config::TMConfig};
 
@@ -37,8 +39,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             .next()
             .filter(|x| !x.is_empty())
             .and_then(|x| x.trim().parse().ok());
-        let cmd: CommandUser = (cmd, val).into();
-        cmd.exec(&mut programs.lock().unwrap(), running.clone());
+        let cmd: Result<CommandUser, CommandError> = (cmd, val).try_into();
+        match cmd {
+            Ok(cmd) => match cmd.exec(&mut programs.lock().unwrap(), running.clone()) {
+                Ok(_) => {}
+                Err(e) => eprintln!("command {cmd:?} raised error {e:?}"),
+            },
+            Err(e) => eprintln!("parsing command raised {e:?}"),
+        };
     }
     running.store(false, Ordering::SeqCst);
     programs

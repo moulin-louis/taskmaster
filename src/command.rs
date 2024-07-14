@@ -2,11 +2,11 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::Read;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
-use crate::Ordering;
 use crate::program::ProgramStatus;
+use crate::Ordering;
 use crate::TMProgram;
 
 #[derive(Debug)]
@@ -17,13 +17,17 @@ pub enum CommandUser {
     Launch(u32),
     Status(u32),
     Exit,
-    Unknown,
 }
 
 #[derive(Debug)]
 pub enum CommandError {
     ProgramNotLaunched,
     FailedOpenFile,
+    WrongIndex,
+    RuntimeError,
+    UnknownStatus,
+    UnknownCommand,
+    MissingParams,
 }
 
 impl Display for CommandError {
@@ -34,34 +38,45 @@ impl Display for CommandError {
 
 impl Error for CommandError {}
 
-impl From<&str> for ProgramStatus {
-    fn from(value: &str) -> Self {
+impl TryFrom<&str> for ProgramStatus {
+    type Error = CommandError;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
         if value.contains("sleeping") {
-            ProgramStatus::Sleeping
+            Ok(ProgramStatus::Sleeping)
         } else if value.contains("running") {
-            ProgramStatus::Running
+            Ok(ProgramStatus::Running)
         } else if value.contains("waiting") {
-            ProgramStatus::Waiting
+            Ok(ProgramStatus::Waiting)
         } else if value.contains("stopped") {
-            ProgramStatus::Stopped
+            Ok(ProgramStatus::Stopped)
         } else if value.contains("paging") {
-            ProgramStatus::Paging
+            Ok(ProgramStatus::Paging)
         } else {
-            ProgramStatus::Unknown
+            Err(CommandError::UnknownStatus)
         }
     }
 }
 
-impl From<(&str, Option<u32>)> for CommandUser {
-    fn from(value: (&str, Option<u32>)) -> Self {
+impl TryFrom<(&str, Option<u32>)> for CommandUser {
+    type Error = CommandError;
+    fn try_from(value: (&str, Option<u32>)) -> Result<Self, Self::Error> {
         match value.0 {
-            "list" => CommandUser::List,
-            "kill" => CommandUser::Kill(value.1.expect("no id for kill")),
-            "restart" => CommandUser::Restart(value.1.expect("no id for restart")),
-            "launch" => CommandUser::Launch(value.1.expect("no id for launch")),
-            "status" => CommandUser::Status(value.1.expect("no id for status")),
-            "exit" => CommandUser::Exit,
-            _ => CommandUser::Unknown,
+            "list" => Ok(CommandUser::List),
+
+            "exit" => Ok(CommandUser::Exit),
+            _ => {
+                let idx = match value.1 {
+                    Some(x) => x,
+                    None => return Err(CommandError::MissingParams),
+                };
+                match value.0 {
+                    "kill" => Ok(CommandUser::Kill(idx)),
+                    "restart" => Ok(CommandUser::Restart(idx)),
+                    "launch" => Ok(CommandUser::Launch(idx)),
+                    "status" => Ok(CommandUser::Status(idx)),
+                    _ => Err(CommandError::UnknownCommand),
+                }
+            }
         }
     }
 }
@@ -73,22 +88,23 @@ impl CommandUser {
         };
         let mut file = match File::open(data) {
             Ok(x) => x,
-            Err(e) => {
-                eprintln!("got error: {e} opening proc file");
-                return Err(CommandError::FailedOpenFile);
-            }
+            Err(_) => return Err(CommandError::FailedOpenFile),
         };
 
         let mut content = String::new();
         file.read_to_string(&mut content)
             .expect("cant read status file to end");
-        let status_line = content.lines().nth(2).unwrap();
-        Ok(ProgramStatus::from(status_line))
+        let status_line = content.lines().nth(2);
+        let status_line = match status_line {
+            None => return Err(CommandError::RuntimeError),
+            Some(x) => x,
+        };
+        Ok(status_line.try_into()?)
     }
 
-    fn display_status(program: &mut TMProgram) {
+    fn display_status(program: &mut TMProgram) -> Result<(), CommandError> {
         match program.child.as_mut() {
-            None => eprintln!("program ({}) isn't launched", program.config.command),
+            None => return Err(CommandError::ProgramNotLaunched),
             Some(child) => {
                 print!("{} : {} => ", program.config.command, child.id());
                 match child.try_wait() {
@@ -96,35 +112,40 @@ impl CommandUser {
                         println!("exited: {}", status.code().unwrap());
                         program.child = None;
                     }
-                    Ok(None) => println!("{:?}", Self::program_status(program)),
-                    Err(_) => eprintln!("failed to get status"),
+                    Ok(None) => println!("{:?}", Self::program_status(program)?),
+                    Err(_) => return Err(CommandError::RuntimeError),
                 }
             }
         };
+        Ok(())
     }
-    fn list_childs(programs: &mut [TMProgram]) {
+    fn list_childs(programs: &mut [TMProgram]) -> Result<(), CommandError> {
         println!("{} program running under out control", programs.len());
         for program in programs.iter_mut() {
-            CommandUser::display_status(program);
+            match CommandUser::display_status(program) {
+                Err(e) => eprintln!(
+                    "fetching status for [{}] raised error{e:?}",
+                    program.config.command
+                ),
+                _ => {}
+            }
         }
+        Ok(())
     }
 
-    fn status_child(programs: &mut [TMProgram], idx: u32) {
+    fn status_child(programs: &mut [TMProgram], idx: u32) -> Result<(), CommandError> {
         match programs.get_mut(idx as usize) {
-            None => eprintln!("this id isn't under out control"),
+            None => Err(CommandError::WrongIndex),
             Some(x) => Self::display_status(x),
         }
     }
 
-    fn kill_child(programs: &mut [TMProgram], idx: u32) {
+    fn kill_child(programs: &mut [TMProgram], idx: u32) -> Result<(), CommandError> {
         match programs.get_mut(idx as usize) {
-            None => eprintln!("this id isn't under our control"),
+            None => return Err(CommandError::WrongIndex),
             Some(x) => {
                 match &mut x.child {
-                    None => {
-                        eprintln!("this id isn't launched");
-                        return;
-                    }
+                    None => return Err(CommandError::ProgramNotLaunched),
                     Some(y) => {
                         y.kill().unwrap();
                         println!("program killed!");
@@ -133,11 +154,12 @@ impl CommandUser {
                 x.child = None;
             }
         }
+        Ok(())
     }
 
-    fn launch_child(programs: &mut [TMProgram], idx: u32) {
+    fn launch_child(programs: &mut [TMProgram], idx: u32) -> Result<(), CommandError> {
         match programs.get_mut(idx as usize) {
-            None => eprintln!("this id isn't under our control"),
+            None => return Err(CommandError::WrongIndex),
             Some(program) => match program.child {
                 Some(_) => eprintln!("program already launched"),
                 None => {
@@ -148,22 +170,30 @@ impl CommandUser {
                 }
             },
         };
+        Ok(())
     }
 
-    fn restart_child(programs: &mut [TMProgram], idx: u32) {
-        Self::kill_child(programs, idx);
-        Self::launch_child(programs, idx);
+    fn restart_child(programs: &mut [TMProgram], idx: u32) -> Result<(), CommandError> {
+        Self::kill_child(programs, idx)?;
+        Self::launch_child(programs, idx)?;
+        Ok(())
     }
 
-    pub fn exec(&self, programs: &mut [TMProgram], running: Arc<AtomicBool>) {
+    pub fn exec(
+        &self,
+        programs: &mut [TMProgram],
+        running: Arc<AtomicBool>,
+    ) -> Result<(), CommandError> {
         match self {
-            Self::Exit => running.store(false, Ordering::SeqCst),
+            Self::Exit => {
+                running.store(false, Ordering::SeqCst);
+                Ok(())
+            }
             Self::List => Self::list_childs(programs),
             Self::Status(x) => Self::status_child(programs, *x),
             Self::Kill(x) => Self::kill_child(programs, *x),
             Self::Launch(x) => Self::launch_child(programs, *x),
             Self::Restart(x) => Self::restart_child(programs, *x),
-            _ => println!("unhandled command"),
         }
     }
 }
