@@ -62,7 +62,6 @@ impl TryFrom<(&str, Option<u32>)> for CommandUser {
     fn try_from(value: (&str, Option<u32>)) -> Result<Self, Self::Error> {
         match value.0 {
             "list" => Ok(CommandUser::List),
-
             "exit" => Ok(CommandUser::Exit),
             _ => {
                 let idx = match value.1 {
