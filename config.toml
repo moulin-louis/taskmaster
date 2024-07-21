@@ -1,7 +1,8 @@
 [programs.a]
 # command:
 # The full command to start the program including the arguments if needed
-command = "sleep 20"
+command = "sleep"
+args = ["20"]
 # autostart:
 # Whether to start the program when taskmaster launches
 autostart = true
@@ -29,34 +30,25 @@ stdout = "/dev/stdout"
 # Redirect stderr (optional)
 stderr = "/dev/stderr"
 [programs.b]
-# command:
-# The full command to start the program including the arguments if needed
-command = "sleep 7"
-# autostart:
-# Whether to start the program when taskmaster launches
+command = "sleep"
+args = ["7"]
 autostart = true
-# autorestart:
-#   always: Always restart the program, even on successful exits.
-#   never: Never restart the program.
-#   unexpected: Only restart if the program exits with a code not in exitcodes.
 autorestart = "unexpected"
-# exitcodes:
-# List of expected exit codes
 exitcodes = [0, 2]
-# startsecs:
-# Seconds to consider startup successful
-startsecs = 5
-# stopginal:
-# Signal for graceful stop
 stopsignal = "TERM"
-# stopwaitsecs:
-# Seconds to wait after stopsignal before killing
 stopwaitsecs = 10
-# stdout:
-# Redirect stdout (optional)
 stdout = "/dev/stdout"
-# stderr:
-# Redirect stderr (optional)
+stderr = "/dev/stderr"
+
+[programs.segfault]
+command = "./a.out"
+args = []
+autostart = true
+autorestart = "unexpected"
+exitcodes = [0, 2]
+stopsignal = "TERM"
+stopwaitsecs = 10
+stdout = "/dev/stdout"
 stderr = "/dev/stderr"
 
 [global]

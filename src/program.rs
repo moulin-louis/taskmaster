@@ -1,3 +1,4 @@
+use std::io;
 use std::process::{Child, Command, Stdio};
 
 use crate::config::TMProgramConfig;
@@ -26,13 +27,17 @@ pub struct TMProgram {
 }
 
 impl TMProgram {
-    pub fn launch(&mut self) {
-        let program: Vec<&str> = self.config.command.split(' ').collect();
-        let cmd = program[0];
-        let args = &program[1..program.len()];
-        match Command::new(cmd).args(args).stdout(Stdio::piped()).spawn() {
-            Ok(x) => self.child = Some(x),
-            Err(e) => eprintln!("failed to spawn program: {}", e),
+    pub fn launch(&mut self) -> io::Result<()> {
+        match Command::new(&self.config.command)
+            .args(&self.config.args)
+            .stdout(Stdio::piped())
+            .spawn()
+        {
+            Ok(x) => {
+                self.child = Some(x);
+                Ok(())
+            }
+            Err(e) => Err(e),
         }
     }
 }

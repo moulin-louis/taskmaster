@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::Read;
+use std::os::unix::process::ExitStatusExt;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
@@ -22,12 +23,12 @@ pub enum CommandUser {
 #[derive(Debug)]
 pub enum CommandError {
     ProgramNotLaunched,
-    FailedOpenFile,
     WrongIndex,
-    RuntimeError,
     UnknownStatus,
     UnknownCommand,
     MissingParams,
+    FailedOpenFile(Box<dyn Error>),
+    RuntimeError(Box<dyn Error>),
 }
 
 impl Display for CommandError {
@@ -87,7 +88,7 @@ impl CommandUser {
         };
         let mut file = match File::open(data) {
             Ok(x) => x,
-            Err(_) => return Err(CommandError::FailedOpenFile),
+            Err(e) => return Err(CommandError::FailedOpenFile(Box::new(e))),
         };
 
         let mut content = String::new();
@@ -95,10 +96,10 @@ impl CommandUser {
             .expect("cant read status file to end");
         let status_line = content.lines().nth(2);
         let status_line = match status_line {
-            None => return Err(CommandError::RuntimeError),
+            None => return Err(CommandError::UnknownStatus),
             Some(x) => x,
         };
-        Ok(status_line.try_into()?)
+        status_line.try_into()
     }
 
     fn display_status(program: &mut TMProgram) -> Result<(), CommandError> {
@@ -108,11 +109,19 @@ impl CommandUser {
                 print!("{} : {} => ", program.config.command, child.id());
                 match child.try_wait() {
                     Ok(Some(status)) => {
-                        println!("exited: {}", status.code().unwrap());
+                        match status.code() {
+                            Some(code) => println!("exited with code: {}", code),
+                            None => match status.signal() {
+                                Some(signal) => println!("exited with signal: {}", signal),
+                                None => {
+                                    println!("no fucking clue whats the status of the program here")
+                                }
+                            },
+                        }
                         program.child = None;
                     }
                     Ok(None) => println!("{:?}", Self::program_status(program)?),
-                    Err(_) => return Err(CommandError::RuntimeError),
+                    Err(e) => return Err(CommandError::RuntimeError(Box::new(e))),
                 }
             }
         };
@@ -121,12 +130,11 @@ impl CommandUser {
     fn list_childs(programs: &mut [TMProgram]) -> Result<(), CommandError> {
         println!("{} program running under out control", programs.len());
         for program in programs.iter_mut() {
-            match CommandUser::display_status(program) {
-                Err(e) => eprintln!(
+            if let Err(e) = CommandUser::display_status(program) {
+                eprintln!(
                     "fetching status for [{}] raised error{e:?}",
                     program.config.command
-                ),
-                _ => {}
+                )
             }
         }
         Ok(())
@@ -162,9 +170,9 @@ impl CommandUser {
             Some(program) => match program.child {
                 Some(_) => eprintln!("program already launched"),
                 None => {
-                    program.launch();
-                    if program.child.is_none() {
-                        eprintln!("failed to launch program")
+                    if let Err(e) = program.launch() {
+                        eprintln!("failed to launch program");
+                        return Err(CommandError::RuntimeError(Box::new(e)));
                     }
                 }
             },

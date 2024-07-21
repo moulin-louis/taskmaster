@@ -1,7 +1,8 @@
-use serde_derive::Deserialize;
 use std::collections::HashMap;
 use std::error::Error;
 use std::process::{Command, Stdio};
+
+use serde_derive::Deserialize;
 
 use crate::program::TMProgram;
 
@@ -19,11 +20,8 @@ impl TMConfig {
         let mut res: Vec<TMProgram> = Vec::new();
         for key in self.programs.keys() {
             let config = self.programs.get(key).unwrap();
-            let program: Vec<&str> = config.command.split(' ').collect();
-            let cmd = program[0];
-            let args = &program[1..program.len()];
-            let child = Command::new(cmd)
-                .args(args)
+            let child = Command::new(&config.command)
+                .args(&config.args)
                 .stdout(Stdio::piped())
                 .spawn()?;
             println!("child id = {}", child.id());
@@ -46,10 +44,10 @@ pub struct TMGlobalConfig {
 #[derive(Deserialize, Debug, Clone)]
 pub struct TMProgramConfig {
     pub command: String,
+    pub args: Vec<String>,
     pub autostart: bool,
     pub autorestart: String,
     pub exitcodes: Vec<u8>,
-    pub startsecs: u32,
     pub stopsignal: String,
     pub stopwaitsecs: u32,
     #[serde(default)]

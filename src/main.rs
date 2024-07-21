@@ -41,21 +41,21 @@ fn main() -> Result<(), Box<dyn Error>> {
             .and_then(|x| x.trim().parse().ok());
         let cmd: Result<CommandUser, CommandError> = (cmd, val).try_into();
         match cmd {
-            Ok(cmd) => match cmd.exec(&mut programs.lock().unwrap(), running.clone()) {
-                Ok(_) => {}
-                Err(e) => eprintln!("command {cmd:?} raised error {e:?}"),
-            },
+            Ok(cmd) => {
+                if let Err(e) = cmd.exec(&mut programs.lock().unwrap(), running.clone()) {
+                    eprintln!("command {cmd:?} raised error {e:?}");
+                }
+            }
             Err(e) => eprintln!("parsing command raised {e:?}"),
         };
     }
     running.store(false, Ordering::SeqCst);
-    programs
-        .lock()
-        .unwrap()
-        .iter_mut()
-        .for_each(|x| match &mut x.child {
-            None => {}
-            Some(x) => x.kill().unwrap(),
-        });
+    programs.lock().unwrap().iter_mut().for_each(|x| {
+        if let Some(child) = &mut x.child {
+            if let Err(e) = &child.kill() {
+                eprintln!("failed to kill {x:?}: {e}");
+            }
+        }
+    });
     Ok(())
 }
