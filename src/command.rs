@@ -1,13 +1,10 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::fs::File;
-use std::io::Read;
-use std::os::unix::process::ExitStatusExt;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
-use crate::program::ProgramStatus;
 use crate::Ordering;
+use crate::program_status::ProgramStatus;
 use crate::TMProgram;
 
 #[derive(Debug)]
@@ -24,10 +21,8 @@ pub enum CommandUser {
 pub enum CommandError {
     ProgramNotLaunched,
     WrongIndex,
-    UnknownStatus,
     UnknownCommand,
     MissingParams,
-    FailedOpenFile(Box<dyn Error>),
     RuntimeError(Box<dyn Error>),
 }
 
@@ -39,25 +34,6 @@ impl Display for CommandError {
 
 impl Error for CommandError {}
 
-impl TryFrom<&str> for ProgramStatus {
-    type Error = CommandError;
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        if value.contains("sleeping") {
-            Ok(ProgramStatus::Sleeping)
-        } else if value.contains("running") {
-            Ok(ProgramStatus::Running)
-        } else if value.contains("waiting") {
-            Ok(ProgramStatus::Waiting)
-        } else if value.contains("stopped") {
-            Ok(ProgramStatus::Stopped)
-        } else if value.contains("paging") {
-            Ok(ProgramStatus::Paging)
-        } else {
-            Err(CommandError::UnknownStatus)
-        }
-    }
-}
-
 impl TryFrom<(&str, Option<u32>)> for CommandUser {
     type Error = CommandError;
     fn try_from(value: (&str, Option<u32>)) -> Result<Self, Self::Error> {
@@ -65,10 +41,18 @@ impl TryFrom<(&str, Option<u32>)> for CommandUser {
             "list" => Ok(CommandUser::List),
             "exit" => Ok(CommandUser::Exit),
             _ => {
+                if value.0 != "kill"
+                    && value.0 != "restart"
+                    && value.0 != "launch"
+                    && value.0 != "status"
+                {
+                    return Err(CommandError::UnknownCommand);
+                }
                 let idx = match value.1 {
                     Some(x) => x,
                     None => return Err(CommandError::MissingParams),
                 };
+
                 match value.0 {
                     "kill" => Ok(CommandUser::Kill(idx)),
                     "restart" => Ok(CommandUser::Restart(idx)),
@@ -81,48 +65,17 @@ impl TryFrom<(&str, Option<u32>)> for CommandUser {
     }
 }
 impl CommandUser {
-    pub fn program_status(program: &TMProgram) -> Result<ProgramStatus, CommandError> {
-        let data = match &program.child {
-            None => return Err(CommandError::ProgramNotLaunched),
-            Some(x) => format!("/proc/{}/status", x.id()),
-        };
-        let mut file = match File::open(data) {
-            Ok(x) => x,
-            Err(e) => return Err(CommandError::FailedOpenFile(Box::new(e))),
-        };
-
-        let mut content = String::new();
-        file.read_to_string(&mut content)
-            .expect("cant read status file to end");
-        let status_line = content.lines().nth(2);
-        let status_line = match status_line {
-            None => return Err(CommandError::UnknownStatus),
-            Some(x) => x,
-        };
-        status_line.try_into()
-    }
-
     fn display_status(program: &mut TMProgram) -> Result<(), CommandError> {
-        match program.child.as_mut() {
-            None => return Err(CommandError::ProgramNotLaunched),
-            Some(child) => {
-                print!("{} : {} => ", program.config.command, child.id());
-                match child.try_wait() {
-                    Ok(Some(status)) => {
-                        match status.code() {
-                            Some(code) => println!("exited with code: {}", code),
-                            None => match status.signal() {
-                                Some(signal) => println!("exited with signal: {}", signal),
-                                None => {
-                                    println!("no fucking clue whats the status of the program here")
-                                }
-                            },
-                        }
-                        program.child = None;
-                    }
-                    Ok(None) => println!("{:?}", Self::program_status(program)?),
-                    Err(e) => return Err(CommandError::RuntimeError(Box::new(e))),
-                }
+        match program.status() {
+            Err(e) => return Err(CommandError::RuntimeError(Box::new(e))),
+            Ok(x) => {
+                print!("{} => ", &program.config.command);
+                match x {
+                    ProgramStatus::Signal(signal) => println!("exited with code: {}", signal),
+                    ProgramStatus::Code(code) => println!("exited with code: {}", code),
+                    ProgramStatus::Running(state) => println!("{:?}", state),
+                    ProgramStatus::Nothing => return Err(CommandError::ProgramNotLaunched),
+                };
             }
         };
         Ok(())
@@ -153,10 +106,7 @@ impl CommandUser {
             Some(x) => {
                 match &mut x.child {
                     None => return Err(CommandError::ProgramNotLaunched),
-                    Some(y) => {
-                        y.kill().unwrap();
-                        println!("program killed!");
-                    }
+                    Some(y) => y.kill().unwrap(),
                 }
                 x.child = None;
             }
@@ -181,7 +131,12 @@ impl CommandUser {
     }
 
     fn restart_child(programs: &mut [TMProgram], idx: u32) -> Result<(), CommandError> {
-        Self::kill_child(programs, idx)?;
+        if let Err(x) = Self::kill_child(programs, idx) {
+            match x {
+                CommandError::ProgramNotLaunched => {}
+                _ => return Err(x),
+            }
+        }
         Self::launch_child(programs, idx)?;
         Ok(())
     }

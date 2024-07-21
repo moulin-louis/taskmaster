@@ -1,42 +1,18 @@
-[programs.a]
-# command:
-# The full command to start the program including the arguments if needed
+[programs.sleep20]
 command = "sleep"
 args = ["20"]
-# autostart:
-# Whether to start the program when taskmaster launches
 autostart = true
-# autorestart:
-#   always: Always restart the program, even on successful exits.
-#   never: Never restart the program.
-#   unexpected: Only restart if the program exits with a code not in exitcodes.
-autorestart = "unexpected"
-# exitcodes:
-# List of expected exit codes
-exitcodes = [0, 2]
-# startsecs:
-# Seconds to consider startup successful
-startsecs = 5
-# stopginal:
-# Signal for graceful stop
+autorestart = "never"
 stopsignal = "TERM"
-# stopwaitsecs:
-# Seconds to wait after stopsignal before killing
-stopwaitsecs = 10
-# stdout:
-# Redirect stdout (optional)
 stdout = "/dev/stdout"
-# stderr:
-# Redirect stderr (optional)
 stderr = "/dev/stderr"
-[programs.b]
+
+[programs.sleep7]
 command = "sleep"
 args = ["7"]
 autostart = true
-autorestart = "unexpected"
-exitcodes = [0, 2]
+autorestart = "never"
 stopsignal = "TERM"
-stopwaitsecs = 10
 stdout = "/dev/stdout"
 stderr = "/dev/stderr"
 
@@ -44,14 +20,10 @@ stderr = "/dev/stderr"
 command = "./a.out"
 args = []
 autostart = true
-autorestart = "unexpected"
-exitcodes = [0, 2]
+autorestart = "never"
 stopsignal = "TERM"
-stopwaitsecs = 10
 stdout = "/dev/stdout"
 stderr = "/dev/stderr"
 
 [global]
-# logfile:
-# path were the log will be written
 logfile = "./logfile.log"

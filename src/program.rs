@@ -4,23 +4,6 @@ use std::process::{Child, Command, Stdio};
 use crate::config::TMProgramConfig;
 
 #[derive(Debug)]
-pub enum ProgramStatus {
-    Running,
-    Sleeping,
-    Waiting,
-    Zombie,
-    Stopped,
-    Paging,
-    Unknown,
-}
-
-impl Default for ProgramStatus {
-    fn default() -> Self {
-        Self::Unknown
-    }
-}
-
-#[derive(Debug)]
 pub struct TMProgram {
     pub config: TMProgramConfig,
     pub child: Option<Child>,
