@@ -16,14 +16,5 @@ stopsignal = "TERM"
 stdout = "/dev/stdout"
 stderr = "/dev/stderr"
 
-[programs.segfault]
-command = "./a.out"
-args = []
-autostart = true
-autorestart = "never"
-stopsignal = "TERM"
-stdout = "/dev/stdout"
-stderr = "/dev/stderr"
-
 [global]
 logfile = "./logfile.log"

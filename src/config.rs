@@ -1,14 +1,12 @@
 use std::collections::HashMap;
 use std::error::Error;
-use std::fs::File;
-use std::process::{Command, Stdio};
 
 use serde_derive::Deserialize;
 
 use crate::program::TMProgram;
 
 #[allow(dead_code)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct TMConfig {
     #[serde(rename = "global")]
     pub global: TMGlobalConfig,
@@ -21,37 +19,32 @@ impl TMConfig {
         let mut res: Vec<TMProgram> = Vec::new();
         for key in self.programs.keys() {
             let config = self.programs.get(key).unwrap();
-            let stdout = match &config.stdout {
-                None => Stdio::piped(),
-                Some(x) => Stdio::from(File::open(x)?),
-            };
-            res.push(TMProgram {
+            let mut prog = TMProgram {
                 config: config.clone(),
-                child: if config.autostart {
-                    Some(
-                        Command::new(&config.command)
-                            .args(&config.args)
-                            .stdout(stdout)
-                            .spawn()?,
-                    )
-                } else {
-                    None
-                },
-            })
+                child: None,
+            };
+            if !prog.config.autostart {
+                continue;
+            }
+            if let Err(e) = prog.launch() {
+                eprintln!("failed launching: {:?}", prog);
+                return Err(Box::new(e));
+            }
+            res.push(prog);
         }
         Ok(res)
     }
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct TMGlobalConfig {
     ///path were the log will be written
     pub logfile: String,
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct TMProgramConfig {
     /// The full command to start the program including the arguments if needed
     pub command: String,

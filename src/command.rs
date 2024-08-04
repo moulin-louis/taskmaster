@@ -1,10 +1,10 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
-use crate::Ordering;
 use crate::program_status::ProgramStatus;
+use crate::Ordering;
 use crate::TMProgram;
 
 #[derive(Debug)]
