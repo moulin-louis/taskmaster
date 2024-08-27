@@ -14,6 +14,7 @@ pub enum CommandUser {
     Restart(u32),
     Launch(u32),
     Status(u32),
+    Help,
     Exit,
 }
 
@@ -40,27 +41,17 @@ impl TryFrom<(&str, Option<u32>)> for CommandUser {
         match value.0 {
             "list" => Ok(CommandUser::List),
             "exit" => Ok(CommandUser::Exit),
-            _ => {
-                if value.0 != "kill"
-                    && value.0 != "restart"
-                    && value.0 != "launch"
-                    && value.0 != "status"
-                {
-                    return Err(CommandError::UnknownCommand);
-                }
-                let idx = match value.1 {
-                    Some(x) => x,
-                    None => return Err(CommandError::MissingParams),
-                };
-
-                match value.0 {
+            "help" => Ok(CommandUser::Help),
+            _ => match value.1 {
+                Some(idx) => match value.0 {
                     "kill" => Ok(CommandUser::Kill(idx)),
                     "restart" => Ok(CommandUser::Restart(idx)),
                     "launch" => Ok(CommandUser::Launch(idx)),
                     "status" => Ok(CommandUser::Status(idx)),
                     _ => Err(CommandError::UnknownCommand),
-                }
-            }
+                },
+                None => return Err(CommandError::MissingParams),
+            },
         }
     }
 }
@@ -141,6 +132,22 @@ impl CommandUser {
         Ok(())
     }
 
+    fn display_help() -> Result<(), CommandError> {
+        println!(
+            "Avaible command: {:?}",
+            [
+                "exit",
+                "help",
+                "list",
+                "kill [ID]",
+                "launch [ID]",
+                "restart [ID]",
+                "status [ID]"
+            ]
+        );
+        Ok(())
+    }
+
     pub fn exec(
         &self,
         programs: &mut [TMProgram],
@@ -156,6 +163,7 @@ impl CommandUser {
             Self::Kill(x) => Self::kill_child(programs, *x),
             Self::Launch(x) => Self::launch_child(programs, *x),
             Self::Restart(x) => Self::restart_child(programs, *x),
+            Self::Help => Self::display_help(),
         }
     }
 }
