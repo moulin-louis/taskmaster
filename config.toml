@@ -6,6 +6,9 @@ autorestart = "never"
 stopsignal = "TERM"
 stdout = "/dev/stdout"
 stderr = "/dev/stderr"
+time_success = 1
+nbr_restart = 0
+time_kill = 1
 
 [programs.sleep7]
 command = "sleep"
@@ -15,6 +18,9 @@ autorestart = "never"
 stopsignal = "TERM"
 stdout = "/dev/stdout"
 stderr = "/dev/stderr"
+time_success = 1
+nbr_restart = 0
+time_kill = 1
 
 [global]
 logfile = "./logfile.log"

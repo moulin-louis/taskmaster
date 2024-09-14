@@ -38,6 +38,7 @@ extern "C" {
 const SIGHUP: c_int = 1;
 
 extern "C" fn handle_sighup(_sig: c_int) {
+    println!("SIGHUP received");
     let programs = &mut CONFIG.lock().unwrap().programs;
     let content = match std::fs::read_to_string("config.toml") {
         Ok(x) => x,
@@ -92,6 +93,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         stdout().flush()?;
         let mut user_input = String::new();
         stdin().read_line(&mut user_input)?;
+        if user_input == "\n" {
+            continue;
+        }
         let mut user_input = user_input.split(' ');
         let cmd = match user_input.next() {
             Some(x) => x.trim(),
