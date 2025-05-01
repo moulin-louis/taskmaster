@@ -1,14 +1,15 @@
 use std::{
     error::Error,
-    ffi::c_int,
-    io::{stdin, stdout, Write},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, LazyLock, Mutex,
     },
 };
-
-use command::CommandError;
+use tokio::signal::unix::signal;
+use tokio::{
+    io::{self, stdin, AsyncBufReadExt, AsyncWriteExt},
+    signal::unix::SignalKind,
+};
 
 use crate::program::TMProgram;
 use crate::{command::CommandUser, config::TMConfig};
@@ -31,51 +32,40 @@ static CONFIG: LazyLock<Mutex<TMConfig>> = LazyLock::new(|| {
     Mutex::new(config)
 });
 
-extern "C" {
-    fn signal(signum: c_int, handler: extern "C" fn(c_int)) -> extern "C" fn(c_int);
-}
-
-const SIGHUP: c_int = 1;
-
-extern "C" fn handle_sighup(_sig: c_int) {
-    println!("SIGHUP received");
-    let programs = &mut CONFIG.lock().unwrap().programs;
-    let content = match std::fs::read_to_string("config.toml") {
-        Ok(x) => x,
-        Err(e) => {
-            eprintln!("failed to read config toml: {}", e);
-            return;
-        }
-    };
-    let new_config = match toml::from_str::<TMConfig>(&content) {
-        Ok(x) => x,
-        Err(e) => {
-            eprintln!("failed to parse content to toml: {}", e);
-            return;
-        }
-    };
-
-    programs.iter_mut().for_each(|it| {
-        let new_program_config = match new_config.programs.get(it.0) {
-            Some(x) => x.clone(),
-            None => todo!("launch new program after config reload"),
+async fn handle_sighup() {
+    let mut stream = signal(SignalKind::hangup()).expect("Failed to create stream for SIGHUP");
+    loop {
+        stream.recv().await;
+        println!("SIGHUP received");
+        let programs = &mut CONFIG.lock().unwrap().programs;
+        let content = match std::fs::read_to_string("config.toml") {
+            Ok(x) => x,
+            Err(e) => {
+                eprintln!("failed to read config toml: {}", e);
+                return;
+            }
         };
-        *it.1 = new_program_config;
-    });
-}
+        let new_config = match toml::from_str::<TMConfig>(&content) {
+            Ok(x) => x,
+            Err(e) => {
+                eprintln!("failed to parse content to toml: {}", e);
+                return;
+            }
+        };
 
-fn manage_programs(programs_arc: Arc<Mutex<Vec<TMProgram>>>) {
-    let mut programs = programs_arc.lock().unwrap();
-    for program in programs.iter_mut() {
-        let _status_code = program.status();
+        programs.iter_mut().for_each(|it| {
+            let new_program_config = match new_config.programs.get(it.0) {
+                Some(x) => x.clone(),
+                None => todo!("launch new program after config reload"),
+            };
+            *it.1 = new_program_config;
+        });
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
-    unsafe {
-        //setup sighup config reload
-        signal(SIGHUP, handle_sighup);
-    }
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    tokio::spawn(handle_sighup());
     let running_arc = Arc::new(AtomicBool::new(true));
     let programs_arc = Arc::new(Mutex::new(Vec::new()));
     programs_arc
@@ -83,30 +73,35 @@ fn main() -> Result<(), Box<dyn Error>> {
         .unwrap()
         .append(&mut CONFIG.lock()?.launch_all()?);
     let programs = programs_arc.clone();
-    let programs_manage = programs_arc.clone();
     let running = running_arc.clone();
-    std::thread::spawn(move || {
-        manage_programs(programs_manage);
-    });
+
+    let mut stdout = tokio::io::stdout();
+
     while running.load(Ordering::SeqCst) {
-        print!("$>");
-        stdout().flush()?;
+        stdout.write_all(b"$>").await?;
+        stdout.flush().await?;
         let mut user_input = String::new();
-        stdin().read_line(&mut user_input)?;
-        if user_input == "\n" {
-            continue;
-        }
-        let mut user_input = user_input.split(' ');
+
+        let mut reader = io::BufReader::new(stdin());
+
+        reader.read_line(&mut user_input).await?;
+        let mut user_input = user_input.split_whitespace();
         let cmd = match user_input.next() {
-            Some(x) => x.trim(),
+            Some(x) => x,
             None => continue,
         };
-        let val = user_input
-            .next()
-            .filter(|x| !x.is_empty())
-            .and_then(|x| x.trim().parse().ok());
-        let cmd: Result<CommandUser, CommandError> = (cmd, val).try_into();
-        match cmd {
+        //convert 2nd argument to i32
+        let val = match user_input.next() {
+            None => None,
+            Some(x) => match x.parse() {
+                Err(_) => {
+                    eprintln!("Failed to parse argument as i32");
+                    continue;
+                }
+                Ok(x) => Some(x),
+            },
+        };
+        match CommandUser::try_from((cmd, val)) {
             Ok(cmd) => {
                 if let Err(e) = cmd.exec(&mut programs.lock().unwrap(), running.clone()) {
                     eprintln!("command {cmd:?} raised error {e:?}");

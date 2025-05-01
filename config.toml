@@ -1,26 +1,46 @@
 [programs.sleep20]
 command = "sleep"
 args = ["20"]
+process = 1
 autostart = true
 autorestart = "never"
-stopsignal = "TERM"
+return_code = [0]
+number_restart = 1
+health_time = 2
+stopsignal = "SIGTERM"
+graceful_period = 1
 stdout = "/dev/stdout"
 stderr = "/dev/stderr"
-time_success = 1
-nbr_restart = 0
-time_kill = 1
+env = [
+    { key = "tata", value = "toto" },
+    { key = "tata2", value = "toto2" },
+    { key = "tata3", value = "toto3" },
+    { key = "tata4", value = "toto4" },
+]
+cwd = "/home/llr"
+umask = 777
 
-[programs.sleep7]
-command = "sleep"
-args = ["7"]
+[programs.SDFSD]
+command = "echo"
+args = ["toto"]
+process = 2
 autostart = true
 autorestart = "never"
-stopsignal = "TERM"
+return_code = [0]
+number_restart = 0
+health_time = 1
+stopsignal = "SIGTERM"
+graceful_period = 1
 stdout = "/dev/stdout"
 stderr = "/dev/stderr"
-time_success = 1
-nbr_restart = 0
-time_kill = 1
+env = [
+    { key = "tata", value = "toto" },
+    { key = "tata2", value = "toto2" },
+    { key = "tata3", value = "toto3" },
+    { key = "tata4", value = "toto4" },
+]
+cwd = "/home/llr"
+umask = 777
 
 [global]
 logfile = "./logfile.log"

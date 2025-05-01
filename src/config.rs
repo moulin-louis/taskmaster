@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::error::Error;
 
-use serde_derive::Deserialize;
+use libc::c_int;
+use serde::Deserialize;
 
 use crate::program::TMProgram;
 
@@ -42,6 +43,7 @@ pub struct TMGlobalConfig {
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum AutoRestart {
     Always,
     Never,
@@ -50,9 +52,12 @@ pub enum AutoRestart {
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct TMProgramConfig {
-    /// The full command to start the program including the arguments if needed
+    /// The command to launch the program, must be findabled in $PATH or you need to set the full
+    /// path of the command
     pub command: String,
+    /// Argument to run the command with
     pub args: Vec<String>,
+    pub process: u32,
     /// Whether to start the program when taskmaster launches
     /// Default: true
     pub autostart: bool,
@@ -60,38 +65,32 @@ pub struct TMProgramConfig {
     ///  - always: Always restart the program, even on successful exits.
     ///  - never: Never restart the program.
     ///  - Unexpected: restart if unexpected exit status
-    /// Default: never
-    pub autorestart: Option<AutoRestart>,
+    pub autorestart: AutoRestart,
     /// Expected exit status
     #[serde(default)]
-    pub exit_status: Option<Vec<i32>>,
-    /// How long the program should be running to be considered "successfully started" in secs.
-    /// Default: 1 secs
-    pub time_success: Option<u32>,
+    pub exit_status: Vec<c_int>,
     /// How many times a restart should be attempted before aborting
-    /// Default: 1
-    pub nbr_restart: Option<u32>,
+    pub number_restart: u32,
+    /// How long the program should be running to be considered "successfully started" in secs.
+    pub health_time: u32,
     /// Signal for graceful stop
     /// Default: SIGTERM
     pub stopsignal: String,
-    /// How long to wait after a graceful stop before killing the program in secs
-    /// Default: 1 secs
-    pub time_kill: u32,
     /// Environment variables set before launching the program
     /// Default: Taskmaster environment
-    pub envs: Option<Vec<String>>,
+    ///TODO
     /// Working directory to set before launching the program
     /// Default: Taskmaster CWD
     pub cwd: Option<String>,
     /// umask to set before launching the program
-    /// Default: no f*** idea
-    pub umask: Option<String>,
-    ///Redirect stdout (optional) path to file or "discarded"
+    /// Default: 022
+    pub umask: Option<i32>,
+    ///Redirect stdout (optional)
     /// Default: Piped to taskmaster
     #[serde(default)]
     pub stdout: Option<String>,
-    #[serde(default)]
-    ///Redirect stderr (optional): path to file or "discarded"
+    ///Redirect stderr (optional)
     /// Default: Piped to taskmaster
+    #[serde(default)]
     pub stderr: Option<String>,
 }

@@ -50,7 +50,7 @@ impl TryFrom<(&str, Option<u32>)> for CommandUser {
                     "status" => Ok(CommandUser::Status(idx)),
                     _ => Err(CommandError::UnknownCommand),
                 },
-                None => return Err(CommandError::MissingParams),
+                None => Err(CommandError::MissingParams),
             },
         }
     }

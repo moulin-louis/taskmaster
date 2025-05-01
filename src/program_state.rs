@@ -50,8 +50,8 @@ impl TMProgram {
             Some(x) => format!("/proc/{}/status", x.id()),
         };
         let mut file = match File::open(path_state) {
-            Ok(x) => x,
             Err(e) => return Err(StateError::RuntimeError(Box::new(e))),
+            Ok(x) => x,
         };
 
         let mut content = String::new();
