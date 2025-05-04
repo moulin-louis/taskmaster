@@ -14,11 +14,12 @@ use tokio::{
 use crate::program::TMProgram;
 use crate::{command::CommandUser, config::TMConfig};
 
-pub mod command;
-pub mod config;
+mod command;
+mod config;
 mod program;
 mod program_state;
 mod program_status;
+mod shell;
 
 static CONFIG: LazyLock<Mutex<TMConfig>> = LazyLock::new(|| {
     let content = match std::fs::read_to_string("config.toml") {
@@ -66,6 +67,7 @@ async fn handle_sighup() {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     tokio::spawn(handle_sighup());
+
     let running_arc = Arc::new(AtomicBool::new(true));
     let programs_arc = Arc::new(Mutex::new(Vec::new()));
     programs_arc
@@ -90,12 +92,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Some(x) => x,
             None => continue,
         };
-        //convert 2nd argument to i32
+        //convert 2nd argument to u32
         let val = match user_input.next() {
             None => None,
             Some(x) => match x.parse() {
-                Err(_) => {
-                    eprintln!("Failed to parse argument as i32");
+                Err(e) => {
+                    eprintln!("Failed to parse argument to u32: {e}");
                     continue;
                 }
                 Ok(x) => Some(x),

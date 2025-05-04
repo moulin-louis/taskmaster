@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::error::Error;
 
 use libc::c_int;
 use serde::Deserialize;
@@ -15,10 +14,9 @@ pub struct TMConfig {
 }
 
 impl TMConfig {
-    pub fn launch_all(&self) -> Result<Vec<TMProgram>, Box<dyn Error>> {
+    pub fn launch_all(&self) -> Result<Vec<TMProgram>, std::io::Error> {
         let mut res: Vec<TMProgram> = Vec::new();
-        for key in self.programs.keys() {
-            let config = self.programs.get(key).unwrap();
+        for config in self.programs.values() {
             let mut prog = TMProgram {
                 config: config.clone(),
                 child: None,
@@ -26,11 +24,10 @@ impl TMConfig {
             if !prog.config.autostart {
                 continue;
             }
-            if let Err(e) = prog.launch() {
-                eprintln!("failed launching: {:?}", prog);
-                return Err(Box::new(e));
-            }
-            res.push(prog);
+            match prog.launch() {
+                Ok(_) => res.push(prog),
+                Err(e) => return Err(e),
+            };
         }
         Ok(res)
     }

@@ -1,12 +1,11 @@
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use std::fs::File;
-use std::io::Read;
 
 use crate::program::TMProgram;
 
 #[derive(Debug)]
+#[cfg(target_os = "linux")]
 pub enum ProgramState {
     Running,
     Sleeping,
@@ -16,6 +15,7 @@ pub enum ProgramState {
     Dead,
 }
 
+#[cfg(target_os = "linux")]
 impl TryFrom<&str> for ProgramState {
     type Error = StateError;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
@@ -27,6 +27,30 @@ impl TryFrom<&str> for ProgramState {
             "T" => Ok(Self::TracingStop),
             "X" => Ok(Self::Dead),
             _ => Err(StateError::UnknownState(value.to_string())), // Capture the unknown state
+        }
+    }
+}
+
+#[derive(Debug)]
+#[cfg(target_os = "macos")]
+pub enum ProgramState {
+    ProcessCreated,
+    Running,
+    Sleeping,
+    Zombie,
+}
+
+#[cfg(target_os = "macos")]
+impl TryFrom<u32> for ProgramState {
+    type Error = StateError;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Self::ProcessCreated),
+            2 => Ok(Self::Running),
+            3 => Ok(Self::Sleeping),
+            4 => Ok(Self::Zombie),
+            _ => Err(StateError::UnknownState(value.to_string())),
         }
     }
 }
@@ -44,7 +68,10 @@ impl Display for StateError {
 }
 
 impl TMProgram {
+    #[cfg(target_os = "linux")]
     pub fn state(&mut self) -> Result<ProgramState, StateError> {
+        use std::fs::File;
+        use std::io::Read;
         let path_state = match &self.child {
             None => return Err(StateError::ProgramNotLaunched),
             Some(x) => format!("/proc/{}/status", x.id()),
@@ -64,5 +91,29 @@ impl TMProgram {
         };
         let binding = status_line.chars().nth(7).unwrap().to_string();
         binding.as_str().try_into()
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn state(&mut self) -> Result<ProgramState, StateError> {
+        use libc::{c_void, proc_bsdinfo, proc_pidinfo, PROC_PIDTBSDINFO};
+        use std::mem;
+
+        let proc_info = match &self.child {
+            None => return Err(StateError::ProgramNotLaunched),
+            Some(x) => {
+                let mut proc_info: proc_bsdinfo = unsafe { mem::zeroed() };
+                unsafe {
+                    proc_pidinfo(
+                        x.id() as i32,
+                        PROC_PIDTBSDINFO,
+                        0,
+                        &mut proc_info as *mut _ as *mut c_void,
+                        size_of::<proc_bsdinfo>() as i32,
+                    );
+                };
+                proc_info
+            }
+        };
+        proc_info.pbi_status.try_into()
     }
 }

@@ -11,12 +11,7 @@ stopsignal = "SIGTERM"
 graceful_period = 1
 stdout = "/dev/stdout"
 stderr = "/dev/stderr"
-env = [
-    { key = "tata", value = "toto" },
-    { key = "tata2", value = "toto2" },
-    { key = "tata3", value = "toto3" },
-    { key = "tata4", value = "toto4" },
-]
+env = [{ key = "tata", value = "toto" }, { key = "tata2", value = "toto2" }]
 cwd = "/home/llr"
 umask = 777
 
@@ -42,5 +37,26 @@ env = [
 cwd = "/home/llr"
 umask = 777
 
+[programs.env]
+command = "env"
+args = []
+process = 2
+autostart = true
+autorestart = "never"
+return_code = [0]
+number_restart = 0
+health_time = 1
+stopsignal = "SIGTERM"
+graceful_period = 1
+stdout = "/dev/stdout"
+stderr = "/dev/stderr"
+env = [
+    { key = "tata", value = "toto" },
+    { key = "tata2", value = "toto2" },
+    { key = "tata3", value = "toto3" },
+    { key = "tata4", value = "toto4" },
+]
+cwd = "/home/llr"
+umask = 777
 [global]
 logfile = "./logfile.log"

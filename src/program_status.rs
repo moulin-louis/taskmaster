@@ -40,6 +40,7 @@ impl TMProgram {
         match self.child.as_mut() {
             None => Ok(ProgramStatus::Nothing),
             Some(child) => match child.try_wait() {
+                //Program exited
                 Ok(Some(status)) => match status.code() {
                     Some(code) => Ok(ProgramStatus::Code(code)),
                     None => match status.signal() {
@@ -47,7 +48,9 @@ impl TMProgram {
                         None => Err(StatusError::RuntimeError),
                     },
                 },
+                //Program running so were fetching its status
                 Ok(None) => Ok(ProgramStatus::Running(self.state()?)),
+                //Error i guess
                 Err(e) => Err(StatusError::TryWaitFailed(e)),
             },
         }

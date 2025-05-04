@@ -159,10 +159,10 @@ impl CommandUser {
                 Ok(())
             }
             Self::List => Self::list_childs(programs),
-            Self::Status(x) => Self::status_child(programs, *x),
-            Self::Kill(x) => Self::kill_child(programs, *x),
-            Self::Launch(x) => Self::launch_child(programs, *x),
-            Self::Restart(x) => Self::restart_child(programs, *x),
+            Self::Status(idx) => Self::status_child(programs, *idx),
+            Self::Kill(idx) => Self::kill_child(programs, *idx),
+            Self::Launch(idx) => Self::launch_child(programs, *idx),
+            Self::Restart(idx) => Self::restart_child(programs, *idx),
             Self::Help => Self::display_help(),
         }
     }
