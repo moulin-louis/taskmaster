@@ -24,7 +24,7 @@ pub enum CommandError {
     WrongIndex,
     UnknownCommand,
     MissingParams,
-    RuntimeError(Box<dyn Error>),
+    RuntimeError,
 }
 
 impl Display for CommandError {
@@ -58,7 +58,7 @@ impl TryFrom<(&str, Option<u32>)> for CommandUser {
 impl CommandUser {
     fn display_status(program: &mut TMProgram) -> Result<(), CommandError> {
         match program.status() {
-            Err(e) => return Err(CommandError::RuntimeError(Box::new(e))),
+            Err(_) => return Err(CommandError::RuntimeError),
             Ok(x) => {
                 print!("{} => ", &program.config.command);
                 match x {
@@ -111,9 +111,9 @@ impl CommandUser {
             Some(program) => match program.child {
                 Some(_) => eprintln!("program already launched"),
                 None => {
-                    if let Err(e) = program.launch() {
+                    if let Err(_) = program.launch() {
                         eprintln!("failed to launch program");
-                        return Err(CommandError::RuntimeError(Box::new(e)));
+                        return Err(CommandError::RuntimeError);
                     }
                 }
             },

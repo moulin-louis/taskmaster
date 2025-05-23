@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
@@ -50,16 +49,15 @@ impl TryFrom<u32> for ProgramState {
             2 => Ok(Self::Running),
             3 => Ok(Self::Sleeping),
             4 => Ok(Self::Zombie),
-            _ => Err(StateError::UnknownState(value.to_string())),
+            _ => Err(StateError::UnknownState),
         }
     }
 }
 
 #[derive(Debug)]
 pub enum StateError {
-    UnknownState(String),
+    UnknownState,
     ProgramNotLaunched,
-    RuntimeError(Box<dyn Error>),
 }
 impl Display for StateError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

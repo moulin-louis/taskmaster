@@ -1,6 +1,5 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::io;
 use std::os::unix::prelude::ExitStatusExt;
 
 use crate::program::TMProgram;
@@ -16,8 +15,8 @@ pub enum ProgramStatus {
 
 #[derive(Debug)]
 pub enum StatusError {
-    TryWaitFailed(io::Error),
-    StateError(StateError),
+    TryWaitFailed,
+    StateError,
     RuntimeError,
 }
 
@@ -27,13 +26,13 @@ impl Display for StatusError {
     }
 }
 
+impl Error for StatusError {}
+
 impl From<StateError> for StatusError {
-    fn from(value: StateError) -> Self {
-        Self::StateError(value)
+    fn from(_: StateError) -> Self {
+        Self::StateError
     }
 }
-
-impl Error for StatusError {}
 
 impl TMProgram {
     pub fn status(&mut self) -> Result<ProgramStatus, StatusError> {
@@ -51,7 +50,7 @@ impl TMProgram {
                 //Program running so were fetching its status
                 Ok(None) => Ok(ProgramStatus::Running(self.state()?)),
                 //Error i guess
-                Err(e) => Err(StatusError::TryWaitFailed(e)),
+                Err(_) => Err(StatusError::TryWaitFailed),
             },
         }
     }

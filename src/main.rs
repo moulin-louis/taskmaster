@@ -1,3 +1,4 @@
+use shell::Shell;
 use std::{
     error::Error,
     sync::{
@@ -77,16 +78,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let programs = programs_arc.clone();
     let running = running_arc.clone();
 
-    let mut stdout = tokio::io::stdout();
+    let mut shell = Shell::try_new("taskmaster >").unwrap();
 
     while running.load(Ordering::SeqCst) {
-        stdout.write_all(b"$>").await?;
-        stdout.flush().await?;
-        let mut user_input = String::new();
-
-        let mut reader = io::BufReader::new(stdin());
-
-        reader.read_line(&mut user_input).await?;
+        let user_input = shell.read_line().await?;
         let mut user_input = user_input.split_whitespace();
         let cmd = match user_input.next() {
             Some(x) => x,
@@ -106,7 +101,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
         match CommandUser::try_from((cmd, val)) {
             Ok(cmd) => {
                 if let Err(e) = cmd.exec(&mut programs.lock().unwrap(), running.clone()) {
-                    eprintln!("command {cmd:?} raised error {e:?}");
+                    match e {
+                        command::CommandError::ProgramNotLaunched => {
+                            eprintln!("Program not launched")
+                        }
+                        command::CommandError::WrongIndex => eprintln!("Wrong index"),
+                        command::CommandError::UnknownCommand => eprintln!("UnknownCommand"),
+                        command::CommandError::MissingParams => {
+                            eprintln!("Missings parametes for command")
+                        }
+                        command::CommandError::RuntimeError => {
+                            eprintln!("Unknown RuntineError")
+                        }
+                    }
                 }
             }
             Err(e) => eprintln!("parsing command raised {e:?}"),
